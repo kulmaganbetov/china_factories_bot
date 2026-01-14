@@ -1,213 +1,259 @@
-# Supplier Verification Bot for Chinese Chemical Manufacturers
+# Chinese Chemical Supplier Verification Bot
 
-Экспериментальный MVP для автоматической проверки китайских поставщиков химических продуктов.
+**Proof-of-Concept** для автоматической верификации китайских поставщиков химического сырья.
 
-## 🎯 Purpose
+## 🎯 Цель
 
-Automatically search, collect, and classify Chinese chemical suppliers as:
+Автоматически искать китайских поставщиков и классифицировать их как:
 - **Manufacturer** (производитель с собственным заводом)
-- **Trading Company** (торговая компания без производства)
+- **Trader** (торговая компания без производства)
 - **Unclear** (недостаточно информации)
 
-## 🏗️ Architecture
+## 🏗️ Как работает
 
-Single-file Python prototype with clear pipeline:
+1. **Поиск** → Ищет компании через SerpAPI (Google)
+2. **Скрейпинг** → Извлекает текст с сайтов компаний
+3. **Извлечение сигналов** → Находит ключевые слова, сертификаты, мощности
+4. **Классификация LLM** → OpenAI GPT-4 анализирует данные и классифицирует
+5. **Результат** → JSON с типом компании, уверенностью и обоснованием
 
-1. **Search Query Generation** - Smart bilingual queries (English + Chinese)
-2. **Web Search** - SerpAPI integration for Google/Bing results
-3. **Web Scraping** - Extract company info from websites
-4. **Signal Extraction** - Identify manufacturer vs trader indicators
-5. **LLM Classification** - GPT-4 analyzes signals and classifies
-6. **Structured Output** - JSON results with confidence scores
-
-## 📋 Requirements
+## 📋 Требования
 
 ```bash
-pip install -r requirements.txt
+pip install requests beautifulsoup4
 ```
 
-- Python 3.8+
-- requests
-- beautifulsoup4
+Python 3.8+
 
-## 🔑 API Keys (Environment Variables)
+## 🔑 API Ключи (ОБЯЗАТЕЛЬНО)
+
+Без ключей код **не работает**. Это proof-of-concept, не демо.
 
 ```bash
-export SERPAPI_API_KEY="your_serpapi_key"
-export OPENAI_API_KEY="your_openai_key"
-export TELEGRAM_BOT_TOKEN="your_telegram_token"  # для будущей интеграции
+export SERPAPI_API_KEY="ваш_ключ_serpapi"
+export OPENAI_API_KEY="ваш_ключ_openai"
 ```
 
-## 🚀 Usage
+Получить ключи:
+- SerpAPI: https://serpapi.com/
+- OpenAI: https://platform.openai.com/api-keys
 
-### Basic Example
-
-```python
-from supplier_verification_bot import ProductRequest, verify_suppliers
-
-# Create request
-product = ProductRequest(
-    product_name="Sulfuric Acid",
-    cas_number="7664-93-9",
-    purity="98%",
-    volume="20,000 MT per month",
-    packaging="Bulk / ISO tank",
-    incoterm="CIF Africa"
-)
-
-# Run verification
-results = verify_suppliers(product)
-
-# Access results
-for result in results:
-    print(f"{result.company_name}: {result.classification} ({result.confidence}%)")
-```
-
-### Run Demo
+## 🚀 Запуск
 
 ```bash
 python supplier_verification_bot.py
 ```
 
-## 📊 Output Format
+Пример хардкоднут в коде:
+- Продукт: Sulfuric Acid 98%
+- CAS: 7664-93-9
+- Объем: 20,000 MT/месяц
+- Упаковка: Bulk / ISO tank
+- Условия: CIF Durban / Dar es Salaam
+
+## 📊 Что извлекается
+
+### Сигналы производителя
+- Ключевые слова: factory, plant, production line, workshop, 工厂, 制造商
+- Адрес: industrial park, development zone, 工业园区
+- Мощность производства: "500,000 MT/year"
+- Сертификаты: ISO 9001, SGS, CIQ, production license
+
+### Сигналы торговой компании
+- Ключевые слова: trading company, sourcing, agent, distributor, 贸易公司
+- Офисный адрес (не промзона)
+- Нет упоминания производственных мощностей
+
+## 📄 Формат результата
 
 ```json
 {
-  "company_name": "Shandong Chemicals Co., Ltd",
-  "website": "https://www.example.com",
-  "classification": "manufacturer",
+  "company": "Shandong Chemical Manufacturing Co., Ltd",
+  "website": "https://example.com",
+  "type": "manufacturer",
   "confidence": 85,
-  "evidence": {
-    "keywords_found": ["manufacturer:factory", "manufacturer:production line"],
-    "address_indicators": ["industrial park"],
+  "reasoning": "Company has own factory with 500,000 MT/year capacity in industrial park",
+  "signals": {
+    "manufacturer_keywords": ["factory", "plant", "production line"],
+    "trader_keywords": [],
     "certificates": ["ISO 9001", "SGS"],
-    "production_capacity": "500,000 MT/year",
-    "packaging_capability": ["bulk", "ISO tank"],
-    "contact_info": {
-      "email": "sales@example.com",
-      "phone": "+86 532 12345678"
-    }
-  },
-  "reasoning": "Strong manufacturer signals: factory mention, production capacity, industrial location"
+    "production_capacity": "500,000 MT per year",
+    "address_indicators": ["industrial park"]
+  }
 }
 ```
 
-## 🔍 Classification Signals
+## ⚙️ Архитектура
 
-### Manufacturer Indicators (Производитель)
-- ✅ Keywords: factory, plant, production line, workshop, manufacturing
-- ✅ Address: industrial park, development zone
-- ✅ Production capacity mentioned (e.g., "500,000 MT/year")
-- ✅ Certificates: ISO 9001, SGS, production license
-- ✅ Own facilities: "our factory", "production base"
+**Файл:** `supplier_verification_bot.py` (308 строк)
 
-### Trading Company Indicators (Торговая компания)
-- 🔄 Keywords: trading company, import/export, sourcing, agent, distributor
-- 🔄 Office location (not industrial)
-- 🔄 No production capacity mentioned
-- 🔄 Focus on "supply chain", "reliable sourcing"
+**Основные функции:**
+- `search_suppliers()` → SerpAPI поиск
+- `scrape_website()` → Извлечение текста с сайта
+- `extract_signals()` → Поиск сигналов (keywords, capacity, certificates)
+- `classify_with_llm()` → OpenAI классификация
+- `verify_supplier()` → Полный пайплайн для одной компании
+- `main()` → Оркестрация
 
-## 🎨 Demo Mode
+## 🔌 Интеграция с Telegram
 
-Without API keys, the bot runs in demo mode with mock data to showcase functionality:
-
-```bash
-python supplier_verification_bot.py
-```
-
-## 🔌 Telegram Integration (Future)
-
-The bot is designed to be easily integrated with Telegram:
+Код готов к интеграции. Пример:
 
 ```python
-# Псевдокод для Telegram бота
+from supplier_verification_bot import search_suppliers, verify_supplier
 
 @bot.message_handler(commands=['search'])
 def handle_search(message):
-    # Parse user input
-    product = parse_user_request(message.text)
+    # Парсим запрос пользователя
+    product = "Sulfuric Acid"
+    cas = "7664-93-9"
 
-    # Run verification
-    results = verify_suppliers(product)
+    # Ищем
+    results = search_suppliers(product, cas)
 
-    # Send results in Russian
-    bot.reply_to(message, format_results_russian(results))
+    # Верифицируем
+    verified = []
+    for result in results[:5]:
+        supplier = verify_supplier(result["url"], result["title"], {})
+        if supplier:
+            verified.append(supplier)
 
-def format_results_russian(results):
-    msg = f"Найдено поставщиков: {len(results)}\n\n"
+    # Отправляем результат на русском
+    msg = format_russian(verified)
+    bot.reply_to(message, msg)
 
-    for idx, result in enumerate(results, 1):
-        icon = "🏭" if result.classification == "manufacturer" else "🏢"
-        msg += f"{icon} #{idx}: {result.company_name}\n"
-        msg += f"   Тип: {result.classification.upper()}\n"
-        msg += f"   Уверенность: {result.confidence}%\n"
-        if result.evidence.production_capacity:
-            msg += f"   Мощность: {result.evidence.production_capacity}\n"
-        msg += f"   🔗 {result.website}\n\n"
-
+def format_russian(suppliers):
+    msg = f"Найдено поставщиков: {len(suppliers)}\n\n"
+    for idx, s in enumerate(suppliers, 1):
+        icon = "🏭" if s["type"] == "manufacturer" else "🏢"
+        msg += f"{icon} #{idx}: {s['company']}\n"
+        msg += f"   Тип: {s['type'].upper()}\n"
+        msg += f"   Уверенность: {s['confidence']}%\n"
+        if s["signals"]["production_capacity"]:
+            msg += f"   Мощность: {s['signals']['production_capacity']}\n"
+        msg += f"   🔗 {s['website']}\n\n"
     return msg
 ```
 
-## 🧪 Testing
+## 🧪 Тестирование
 
+Без API ключей:
 ```bash
-# Test with different products
-python -c "
-from supplier_verification_bot import ProductRequest, verify_suppliers
-
-products = [
-    ProductRequest('Sulfuric Acid', cas_number='7664-93-9'),
-    ProductRequest('Sodium Hydroxide', cas_number='1310-73-2'),
-    ProductRequest('Methanol', cas_number='67-56-1')
-]
-
-for product in products:
-    results = verify_suppliers(product)
-    print(f'{product.product_name}: Found {len(results)} suppliers')
-"
+$ python supplier_verification_bot.py
+ValueError: SERPAPI_API_KEY environment variable is required
 ```
 
-## ⚠️ Limitations (MVP)
+С API ключами:
+```bash
+$ export SERPAPI_API_KEY="..."
+$ export OPENAI_API_KEY="..."
+$ python supplier_verification_bot.py
 
-This is a **demo prototype**, not production code:
+🔍 Searching: Sulfuric Acid CAS 7664-93-9 manufacturer China
+📄 Scraping: https://example-manufacturer.com
+🏭 Type: MANUFACTURER
+📊 Confidence: 90%
+💡 Reasoning: Has own factory with 500k MT/year capacity in Shandong Industrial Park
+```
 
-- ❌ No rate limiting
-- ❌ No retry logic
-- ❌ No persistent storage
-- ❌ Limited error handling
-- ❌ No async/concurrent requests
-- ❌ Mock data in demo mode
+## 🎯 Особенности proof-of-concept
 
-## 🎯 Production Roadmap
+✅ Реальный поиск через SerpAPI
+✅ Реальный скрейпинг сайтов
+✅ Реальная классификация через OpenAI
+✅ Билингвальные запросы (中文 + English)
+✅ Извлечение структурированных сигналов
+✅ JSON выход с обоснованием
+✅ Готов к интеграции с Telegram
 
-To make this production-ready:
+❌ Нет БД (in-memory)
+❌ Нет async (синхронный)
+❌ Нет retry логики
+❌ Нет кэширования
+❌ Нет rate limiting
 
-1. **Database** - PostgreSQL for supplier data, cache, history
-2. **Async** - Use `aiohttp` for concurrent scraping
-3. **Rate Limiting** - Respect robots.txt, add delays
-4. **Caching** - Redis for search results and classifications
-5. **Error Recovery** - Retry logic, fallback strategies
-6. **Monitoring** - Logging, metrics, alerts
-7. **Security** - Input validation, sanitization, API key rotation
-8. **Testing** - Unit tests, integration tests, fixtures
-9. **Telegram Bot** - Full interactive bot with inline keyboards
-10. **Admin Panel** - Review results, train classifier
+## 📝 Для production
 
-## 📝 Notes
+Нужно добавить:
+1. PostgreSQL для хранения результатов
+2. Redis для кэширования
+3. Async/await для параллельного скрейпинга
+4. Retry логику с exponential backoff
+5. Rate limiting для API
+6. Логирование и мониторинг
+7. Telegram бот с inline keyboard
+8. Admin панель для проверки результатов
 
-- **Language**: Bot outputs can be in Russian (for Telegram)
-- **Search**: Uses bilingual queries (中文 + English)
-- **LLM**: GPT-4 provides nuanced classification with reasoning
-- **Fallback**: Rule-based classifier if LLM fails
+## 📊 Стоимость
 
-## 🤝 Contributing
+Примерная стоимость на 1 поиск:
+- SerpAPI: $0.003 × 3 запроса = $0.009
+- OpenAI GPT-4: $0.03 × 5 компаний = $0.15
+- **Итого: ~$0.16 на поиск**
 
-This is an MVP demo. For production use, consider:
-- Adding more manufacturer signals (patents, export licenses)
-- Integrating with Chinese business registries (工商局)
-- OCR for business license images
-- Social proof (customer reviews, certifications)
+Для снижения стоимости:
+- Использовать GPT-3.5-turbo вместо GPT-4 (-80%)
+- Кэшировать результаты (Redis)
+- Ограничить до 3 компаний вместо 5
 
-## 📄 License
+## 🔒 Безопасность
 
-MIT - Experimental prototype for client demo
+- API ключи через environment variables
+- Не коммитим `.env` файл
+- User-Agent для скрейпинга
+- Timeout на requests
+- Фильтрация URL (no PDFs, marketplaces)
+
+## 📄 Файлы
+
+- `supplier_verification_bot.py` - Основной код (308 строк)
+- `requirements.txt` - Зависимости
+- `.env.example` - Пример конфига
+- `.gitignore` - Исключения
+- `README.md` - Документация
+
+## 🤝 Пример использования
+
+```python
+from supplier_verification_bot import verify_supplier
+
+result = verify_supplier(
+    url="https://shandong-chemical.com",
+    title="Shandong Chemical Co., Ltd",
+    product_context={"product": "Sulfuric Acid", "cas": "7664-93-9"}
+)
+
+print(f"Type: {result['type']}")
+print(f"Confidence: {result['confidence']}%")
+print(f"Reasoning: {result['reasoning']}")
+```
+
+## 📞 Telegram Bot Message (Пример)
+
+```
+Найдено поставщиков: 3
+
+🏭 #1: Shandong Chemical Manufacturing Co., Ltd
+   Тип: ПРОИЗВОДИТЕЛЬ (90%)
+   Мощность: 500,000 MT/год
+   Сертификаты: ISO 9001, SGS, CIQ
+   🔗 www.shandong-chemical.com
+
+🏢 #2: Shanghai Global Trading Co., Ltd
+   Тип: ТОРГОВАЯ КОМПАНИЯ (85%)
+   Офис: Шанхай, International Trade Center
+   🔗 www.shanghai-trading.com
+
+❓ #3: Jiangsu Chemical Co., Ltd
+   Тип: НЕЯСНО (60%)
+   Требуется дополнительная проверка
+   🔗 www.jiangsu-chem.cn
+```
+
+## ⚠️ Disclaimer
+
+Это **proof-of-concept** код для демонстрации возможности автоматической верификации поставщиков. Не использовать в production без доработки (БД, error handling, rate limiting, monitoring).
+
+## 📜 License
+
+MIT
